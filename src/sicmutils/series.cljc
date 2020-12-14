@@ -639,6 +639,18 @@
   (defmethod g/div [kind kind] [s t]
     (ctor (i/div (seq s) (seq t))))
 
+  (defmethod g/solve-linear [kind kind] [x y] (g/div y x))
+  (defmethod g/solve-linear [kind ::coseries] [x y] (g/div y x))
+  (defmethod g/solve-linear [::coseries kind] [x y] (g/div y x))
+
+  (defmethod g/solve-linear-left [kind kind] [x y] (g/div y x))
+  (defmethod g/solve-linear-left [kind ::coseries] [x y] (g/div y x))
+  (defmethod g/solve-linear-left [::coseries kind] [x y] (g/div y x))
+
+  (defmethod g/solve-linear-right [kind kind] [x y] (g/div x y))
+  (defmethod g/solve-linear-right [kind ::coseries] [x y] (g/div x y))
+  (defmethod g/solve-linear-right [::coseries kind] [x y] (g/div x y))
+
   (defmethod g/sqrt [kind] [s]
     (ctor (i/sqrt (seq s))))
 

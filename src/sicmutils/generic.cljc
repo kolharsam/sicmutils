@@ -225,7 +225,7 @@
 (def-generic-function angle 1)
 (def-generic-function conjugate 1)
 
-;; Operations on structures
+;; ## Operations on structures
 
 (def-generic-function transpose 1)
 (def-generic-function trace 1)
@@ -236,7 +236,7 @@
 (def-generic-function outer-product 2)
 (def-generic-function cross-product 2)
 
-;; Structure Defaults
+;; ### Structure Defaults
 
 (defmethod transpose [::v/scalar] [a] a)
 (defmethod trace [::v/scalar] [a] a)
@@ -245,7 +245,20 @@
 (defmethod dot-product [::v/scalar ::v/scalar] [l r] (mul l r))
 (defmethod inner-product [::v/scalar ::v/scalar] [l r] (mul (conjugate l) r))
 
-;; More advanced generic operations.
+;; ## Solvers
+
+(def-generic-function solve-linear 2)
+(def-generic-function solve-linear-left 2)
+(def-generic-function solve-linear-right 2)
+
+;; ### Sovler Defaults
+
+(defmethod solve-linear [::v/scalar ::v/scalar] [x y] (div y x))
+(defmethod solve-linear-left [::v/scalar ::v/scalar] [x y] (div y x))
+(defmethod solve-linear-right [::v/scalar ::v/scalar] [x y] (div x y))
+
+;; ## More advanced generic operations
+
 (def-generic-function Lie-derivative 1)
 
 (defmulti partial-derivative v/argument-kind)

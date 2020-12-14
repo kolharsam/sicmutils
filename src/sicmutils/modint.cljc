@@ -54,12 +54,21 @@
 (def ^:private add (modular-binop g/add))
 (def ^:private sub (modular-binop g/sub))
 (def ^:private mul (modular-binop g/mul))
+(def ^:private div (modular-binop g/div))
+(def ^:private expt (modular-binop g/expt))
 (def ^:private remainder (modular-binop g/remainder))
 (def ^:private modulo (modular-binop g/modulo))
 
 (defmethod g/add [::modint ::modint] [a b] (add a b))
 (defmethod g/mul [::modint ::modint] [a b] (mul a b))
 (defmethod g/sub [::modint ::modint] [a b] (sub a b))
+(defmethod g/div [::modint ::modint] [a b] (div a b))
+(defmethod g/expt [::modint ::modint] [a b] (expt a b))
+
+(defmethod g/solve-linear [::modint ::modint] [a b] (div b a))
+(defmethod g/solve-linear-left [::modint ::modint] [a b] (div b a))
+(defmethod g/solve-linear-right [::modint ::modint] [a b] (div a b))
+
 (defmethod g/negate [::modint] [a] (make (g/negate (:i a)) (:m a)))
 (defmethod g/invert [::modint] [a] (modular-inv a))
 (defmethod g/magnitude [::modint] [{:keys [i m] :as a}] (g/modulo i m))

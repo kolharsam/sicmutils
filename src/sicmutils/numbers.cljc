@@ -56,6 +56,7 @@
 (defmethod g/invert [::v/real] [a] (core-div a))
 
 ;; ## Complex Operations
+
 (defmethod g/real-part [::v/real] [a] a)
 (defmethod g/imag-part [::v/real] [a] 0)
 

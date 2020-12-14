@@ -273,12 +273,18 @@
 (defmethod g/mul [::operator ::operator] [o p] (o*o o p))
 (defmethod g/mul [::operator ::v/function] [o f] (o*f o f))
 (defmethod g/mul [::v/function ::operator] [f o] (f*o f o))
+
 ;; When multiplied with operators, a number is treated as an operator
 ;; that multiplies its input by the number.
 (defmethod g/mul [::operator ::co-operator] [o n] (o*f o n))
 (defmethod g/mul [::co-operator ::operator] [n o] (f*o n o))
-(defmethod g/div [::operator ::co-operator] [o n] (o*f o (g/invert n)))
+
+(defmethod g/div [::operator ::v/scalar] [o n] (o*f o (g/invert n)))
 (defmethod g/div [::operator ::v/function] [o f] (o*f o (g/invert f)))
+
+(defmethod g/solve-linear [::v/scalar ::operator] [n o] (o*f o (g/invert n)))
+(defmethod g/solve-linear-left [::v/scalar ::operator] [n o] (o*f o (g/invert n)))
+(defmethod g/solve-linear-right [::operator ::v/scalar] [o n] (o*f o (g/invert n)))
 
 (defmethod g/square [::operator] [o] (o*o o o))
 

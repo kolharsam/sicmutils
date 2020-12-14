@@ -454,6 +454,10 @@
 (define-binary-operation g/mul diff-*)
 (define-binary-operation g/div diff-div)
 
+(define-binary-operation g/solve-linear (fn [l r] (diff-div r l)))
+(define-binary-operation g/solve-linear-left (fn [l r] (diff-div r l)))
+(define-binary-operation g/solve-linear-right diff-div)
+
 (define-unary-operation g/log log)
 (define-unary-operation g/exp exp)
 (define-unary-operation g/sqrt sqrt)

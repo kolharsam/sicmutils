@@ -820,11 +820,63 @@
 (defmethod g/mul [:sicmutils.calculus.derivative/differential ::structure] [a b]
   (scalar*structure a b))
 
-(defmethod g/div [::structure ::v/scalar] [a b]
-  (structure*scalar a (g/invert b)))
+(defmethod g/div [::structure ::v/scalar] [a b] (structure*scalar a (g/invert b)))
+(defmethod g/div [::structure ::structure] [a b] (s:* (g/invert b) a))
 
-(defmethod g/div [::structure ::structure] [a b]
-  (s:* (g/invert b) a))
+(comment
+  (define (s:solve-linear-left M product)
+    (let ((cp (compatible-shape product)))
+      (let ((cr (compatible-shape (g:* cp M))))
+        (g:* (s:inverse cp M cr) product))))
+
+  (define (s:solve-linear-right product M)
+    (let ((cp (compatible-shape product)))
+      (let ((cr (compatible-shape (g:* M cp))))
+        (g:* product (s:inverse cr M cp)))))
+
+  (assign-operation 'solve-linear-right  scalar/tensor                   scalar?     two-tensor?)
+  (assign-operation 'solve-linear-right  s:solve-linear-right            structure?  structure?)
+
+  (assign-operation 'solve-linear-left   (fn [x y] (scalar/tensor y x))   two-tensor?     scalar?)
+  (assign-operation 'solve-linear-left   s:solve-linear-left             structure?  structure?)
+
+  (assign-operation 'solve-linear        (fn [x y] (scalar/tensor y x))   two-tensor?     scalar?)
+  (assign-operation 'solve-linear        s:solve-linear-left             structure?  structure?)
+
+  (define (s:divide-by-structure rv s)
+    (s:solve-linear-left s rv))
+
+  ;; TODO do we need to replace divide as well?
+
+  ;;; Test cases
+  (let [a (up (down 'a 'b) (down 'c 'd))
+        b (down 'e 'f)
+        c (* a b)]
+    (- b (s:divide-by-structure c a)))
+  ;; #| (down 0 0) |#
+
+  (let [a (down (up 'a 'b) (up 'c 'd))
+        b (up 'e 'f)
+        c (* a b)]
+    (- b (s:divide-by-structure c a)))
+  ;; #| (up 0 0) |#
+
+
+;;; The following are strange results...
+
+  (let [a (down (down 'a 'b) (down 'c 'd))
+        b (down 'e 'f)]
+    (let ((c (* a b)))
+      (* a (s:divide-by-structure b a))))
+
+  ;; (down e f)
+
+
+  (let [a (up (up 'a 'b) (up 'c 'd))
+        b (up 'e 'f)]
+    (* a (s:divide-by-structure b a)))
+  ;; (up e f)
+  )
 
 (defmethod g/square [::structure] [a] (dot-product a a))
 (defmethod g/cube [::structure] [a] (s:* a (s:* a a)))

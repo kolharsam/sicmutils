@@ -141,12 +141,12 @@
 
 (def Any 'Any)
 
-(defn default-function-type [n]
+(defn default-type [n]
   (if (= n 1)
     (-> Real Real)
     (-> (X* Real n) Real)))
 
-(defn permissive-function-type [n]
+(defn permissive-type [n]
   (-> (X* Any n) Real))
 
 ;; Some useful types
@@ -342,6 +342,11 @@
        (= (name a) (name b))
        (= (domain-types a) (domain-types b))
        (= (range-type a) (range-type b))))
+
+;; TODO allow for functions in range!
+;;
+;; (((literal-function 'f (-> Real (-> Real Real))) 'x) 'y)
+;; ((f x) y)
 
 (defn literal-function
   ([f] (->Function f [:exactly 1] [0] 0))

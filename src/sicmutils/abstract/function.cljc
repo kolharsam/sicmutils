@@ -391,36 +391,45 @@
 
 ;; ## Differentiation of literal functions
 
-(defn- make-partials [f v]
-  (letfn [(fd [indices vv]
-            (cond (s/structure? vv)
-                  (s/same vv (map-indexed (fn [i element]
-                                            (fd (conj indices i) element))
-                                          vv))
-                  (v/numerical? vv)
-                  (let [fexp (if (= (f/arity f) [:exactly 1])  ; univariate
-                               (if (= (first indices) 0)
-                                 (if (= (count indices) 1)
-                                   (sym/derivative (name f))
-                                   `((~'partial ~@(next indices)) ~(name f)))
-                                 (u/illegal "wrong indices"))
-                               `((~'partial ~@indices) ~(name f)))]
-                    (->Function
-                     fexp (f/arity f) (domain-types f) (range-type f)))
-                  :else
-                  (u/illegal (str "make-partials WTF " vv))))]
-    (fd [] v)))
+(defn- literal-partial [f elem path]
+  (let [fexp (if (= (f/arity f) [:exactly 1])  ; univariate
+               (if (= (first path) 0)
+                 (if (= (count path) 1)
+                   ;; Special-case the single argument case, or a unary function
+                   ;; that's provided with a structure of a single entry.
+                   (sym/derivative (name f))
+                   `((~'partial ~@(next path)) ~(name f)))
+                 (u/illegal "wrong indices"))
+               ;; If the function takes multiple arguments we DO need to index
+               ;; into that first layer. (else the first layer is added.)
+               `((~'partial ~@path) ~(name f)))]
+    (->Function
+     fexp (f/arity f) (domain-types f) (range-type f))))
 
-(defn- literal-derivative [f xs]
-  (let [v (m/seq-> xs)
-        maxtag (apply d/max-order-tag (flatten v))
-        ve (s/mapr #(d/primal-part % maxtag) v)
-        dv (s/mapr #(d/tangent-part % maxtag) v)]
-    (d/d:+ (apply f ve)
-           (reduce d/d:+ (map (fn [partialx dx]
-                                (d/d:* (apply partialx ve) dx))
-                              (flatten (make-partials f v))
-                              (flatten dv))))))
+;; NOTE this is all only working because we AGREE with how the tag is being
+;; chosen in the derivative implementation! This is NOT going to work with
+;; reverse mode. Be careful!
+;;
+;; NOTE can you save tag traversals completely, and look at the dynamic
+;; variable?
+
+(defn- literal-derivative
+  "Chain rule! Note that `xs` comes in wrapped in an EXTRA layer, hence the
+  `apply`."
+  [f xs]
+  (let [v        (m/seq-> xs)
+        flat-v   (flatten v)
+        tag      (apply d/max-order-tag flat-v)
+        ve       (s/mapr #(d/primal-part % tag) v)
+        partials (s/map-chain
+                  (fn [x path _]
+                    (let [dx (d/tangent-part x tag)]
+                      (if (v/zero? dx)
+                        0
+                        (d/d:* (apply (literal-partial f x path) ve)
+                               dx))))
+                  v)]
+    (apply d/d:+ (apply f ve) (flatten partials))))
 
 (defn- check-argument-type
   "Check that the argument provided at index i has the same type as

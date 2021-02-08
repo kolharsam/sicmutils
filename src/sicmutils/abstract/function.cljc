@@ -18,7 +18,12 @@
 ;;
 
 (ns sicmutils.abstract.function
-  (:refer-clojure :exclude [name])
+  "NOTE:
+  - a typed function is a function with typed metadata.
+  -
+
+  "
+  (:refer-clojure :exclude [name ->])
   (:require [sicmutils.abstract.number :as an]
             [sicmutils.differential :as d]
             [sicmutils.expression :as x]
@@ -29,8 +34,7 @@
             [sicmutils.polynomial]
             [sicmutils.structure :as s]
             [sicmutils.util :as u]
-            [sicmutils.value :as v]
-            [sicmutils.calculus.derivative :refer [derivative-symbol]])
+            [sicmutils.value :as v])
   #?(:clj
      (:import [clojure.lang IFn])))
 
@@ -46,32 +50,178 @@
 
 (derive ::function ::v/function)
 
-(defn ^:private sicm-set->exemplar
+;; The descriptors for literal functions look like prefix versions of the
+;; standard function types. Thus, we want to be able to say:
+;;
+;; (literal-function 'V (-> (X Real Real) Real))
+;;
+;; The base types are the real numbers, designated by "Real". We will later
+;; extend the system to include complex numbers, designated by "Complex".
+;;
+;; Types can be combined in several ways. The cartesian product of types is
+;; designated by:
+
+;; (X <type1> <type2> ...)
+;;
+;; We use this to specify an argument tuple of objects of the given types
+;; arranged in the given order.
+;;
+;; Similarly, we can specify an up tuple or a down tuple with:
+;;
+;; (UP <type1> <type2> ...)
+;; (DOWN <type1> <type2> ...)
+;;
+;; We can also specify a uniform tuple of a number of elements of the
+;; same type using:
+;;
+;; (UP* <type> [n])
+;; (DOWN* <type> [n])
+;;
+;; To get started... Type expressions are self-evaluating.
+
+(def Real 'Real)
+
+(defn X
+  ([] (u/illegal "Null type argument -- X"))
+  ([t] t)
+  ([t & ts] (apply list 'X t ts)))
+
+(defn UP
+  ([] (u/illegal "Null type argument -- UP"))
+  ([t] t)
+  ([t & ts] (apply list 'UP t ts)))
+
+(defn DOWN
+  ([] (u/illegal "Null type argument -- DOWN"))
+  ([t] t)
+  ([t & ts] (apply list 'DOWN t ts)))
+
+(defn EXPT [t n]
+  (apply X (repeat n t)))
+
+;; Examples:
+;; (UP* Real 2 (UP Real Real) 2)
+;; => (UP Real Real (UP Real Real) (UP Real Real))
+;;
+;; (UP* Real 2 (UP Real Real) 2 Real)
+;; => (UP* Real Real (UP Real Real) (UP Real Real) Real)
+
+(defn- starify [xs starred-sym unstarred-fn]
+  (if (empty? xs)
+    (u/illegal (str "Null type argument -- " starred-sym))
+	  (loop [xs xs
+           current nil
+           explicit? false
+           types []]
+	    (if (empty? xs)
+        (if explicit?
+          (apply unstarred-fn types)
+          (cons starred-sym types))
+        (let [[x & more] xs]
+		      (if (integer? x)
+		        (if current
+		          (recur more
+                     false
+                     true
+			               (into types (repeat (dec x) current)))
+		          (u/illegal "Bad type arguments" starred-sym xs))
+            (recur more x false (conj types x))))))))
+
+(defn X* [& rest]
+  (starify rest 'X* X))
+
+(defn UP* [& rest]
+  (starify rest 'UP* UP))
+
+(defn DOWN* [& rest]
+  (starify rest 'DOWN* DOWN))
+
+(defn -> [domain range]
+  (list '-> domain range))
+
+(def Any 'Any)
+
+(defn default-function-type [n]
+  (if (= n 1)
+    (-> Real Real)
+    (-> (X* Real n) Real)))
+
+(defn permissive-function-type [n]
+  (-> (X* Any n) Real))
+
+;; Some useful types
+
+(defn Lagrangian
+  "n = #degrees-of-freedom"
+  ([] (-> (UP* Real (UP* Real) (UP* Real)) Real))
+  ([n] (-> (UP Real (UP* Real n) (UP* Real n)) Real)))
+
+(defn Hamiltonian
+  "n = #degrees-of-freedom"
+  ([] (-> (UP Real (UP* Real) (DOWN* Real)) Real))
+  ([n] (-> (UP Real (UP* Real n) (DOWN* Real n)) Real)))
+
+(defn process-type
+  "combo of all type-> functions."
+  [t]
+  {:pre [(sequential? t)]}
+  (let [[arrow domain range] t]
+    (if-not (and (= '-> arrow) domain range)
+      (u/illegal
+       (str "A SICM signature is of the form '(-> domain range), got: "
+            arrow domain range))
+      (let [[dtypes arity]
+            (cond (and (sequential? domain)
+                       (= (first domain) 'X))
+                  (let [types (into [] (rest domain))]
+                    [types [:exactly (count types)]])
+
+                  (and (sequential? domain)
+                       (= (first domain) 'X*))
+                  [[domain] [:at-least 0]]
+
+                  :else [domain [:exactly 1]])]
+        {:domain domain
+         :range-type range
+         :domain-types dtypes
+         :arity arity}))))
+
+;; Existing Stuff
+
+(defn- sicm-set->exemplar
   "Convert a SICM-style set (e.g., Real or (UP Real Real)) to
   an exemplar (an instance of the relevant type)."
   [s]
-  (cond
-    (= s 'Real) 0
+  (cond (= s 'Real) 0
+        (sequential? s)
+        (let [[ctor & [type arity :as args]] s]
+          (case ctor
+            X     (mapv sicm-set->exemplar args)
+            UP    (s/up* (map sicm-set->exemplar args))
+            DOWN  (s/down* (map sicm-set->exemplar args))
+            X*    (into [] (repeat arity (sicm-set->exemplar type)))
+            UP*   (s/up* (repeat arity (sicm-set->exemplar type)))
+            DOWN* (s/down* (repeat arity (sicm-set->exemplar type)))))
+        :else
+        (u/illegal "error!")))
 
-    (sequential? s)
-    (let [[constructor & args] s]
-      (case constructor
-        X     (mapv sicm-set->exemplar args)
-        UP    (apply s/up (map sicm-set->exemplar args))
-        DOWN  (apply s/down (map sicm-set->exemplar args))
-        UP*   (apply s/up (repeat (second args) (sicm-set->exemplar (first args))))
-        DOWN* (apply s/down (repeat (second args) (sicm-set->exemplar (first args))))
-        X*    (into [] (repeat (second args) (sicm-set->exemplar (first args))))))))
+;; TODO SHOULD NOT handle an "X" type in the range.
 
 (defn sicm-signature->domain-range
-  "Convert a SICM-style literal function signature (e.g.,
-  '(-> Real (X Real Real)) ) to our 'exemplar' format."
+  "Convert a SICM-style literal function signature,
+
+  e.g., '(-> Real (X Real Real))
+
+  to our 'exemplar' format."
   [[arrow domain range]]
   (when-not (and (= '-> arrow) domain range)
-    (u/illegal (str "A SICM signature is of the form '(-> domain range), got: " arrow domain range)))
-  [(let [d (sicm-set->exemplar domain)]
-     (if (vector? d) d [d]))
-   (sicm-set->exemplar range)])
+    (u/illegal
+     (str "A SICM signature is of the form '(-> domain range), got: "
+          arrow domain range)))
+  (let [d (sicm-set->exemplar domain)
+        d (if (vector? d) d [d])
+        r (sicm-set->exemplar range)]
+    [d r]))
 
 (deftype Function [name arity domain range]
   v/Value
@@ -81,7 +231,7 @@
   (zero-like [_] (fn [& _] (v/zero-like range)))
   (one-like [_] (fn [& _] (v/one-like range)))
   (identity-like [_]
-    (let [meta {:arity arity :from :identity-like}]
+    (let [meta {:arity arity :from ::v/identity-like}]
       (with-meta identity meta)))
   (exact? [f] (f/compose v/exact? f))
   (freeze [_] (v/freeze name))
@@ -241,45 +391,17 @@
 
 ;; ## Differentiation of literal functions
 
-(defn symbolic-derivative? [expr]
-  (and (sequential? expr)
-       ;; XXX GJS uses 'derivative here; should we? doesn't he just
-       ;; have to change it back to D when printing?
-       (= (first expr) derivative-symbol)))
-
-(defn iterated-symbolic-derivative? [expr]
-  (and (sequential? expr)
-       (sequential? (first expr))
-       (sym/expt? (first expr))
-       (= (second (first expr)) derivative-symbol)))
-
-(defn symbolic-increase-derivative [expr]
-  (let [expt (sym/symbolic-operator 'expt)]
-    (cond (symbolic-derivative? expr)
-          (list (expt derivative-symbol 2) (fnext expr))
-          (iterated-symbolic-derivative? expr)
-          (list (expt derivative-symbol
-                      (+ (first (nnext (first expr)))
-                         1))
-                (fnext expr))
-          :else
-          (list derivative-symbol expr))))
-
 (defn- make-partials [f v]
-  ;; GJS calls this function (the loop below) "fd"; we have no idea
-  ;; what that stands for or what
-  ;; is being attempted here
   (letfn [(fd [indices vv]
             (cond (s/structure? vv)
                   (s/same vv (map-indexed (fn [i element]
                                             (fd (conj indices i) element))
                                           vv))
-                  (or (v/numerical? vv)
-                      (x/abstract? vv))
+                  (v/numerical? vv)
                   (let [fexp (if (= (f/arity f) [:exactly 1])  ; univariate
                                (if (= (first indices) 0)
                                  (if (= (count indices) 1)
-                                   (symbolic-increase-derivative (name f))
+                                   (sym/derivative (name f))
                                    `((~'partial ~@(next indices)) ~(name f)))
                                  (u/illegal "wrong indices"))
                                `((~'partial ~@indices) ~(name f)))]
@@ -309,6 +431,7 @@
           (u/illegal (str "expected numerical quantity in argument " indexes
                           " of function call " f
                           " but got " provided)))
+
         (s/structure? expected)
         (do (when-not (and (or (s/structure? provided) (sequential? provided))
                            (= (s/orientation provided) (s/orientation expected))
@@ -317,12 +440,14 @@
                               " but got " provided )))
             (doseq [[provided expected sub-index] (map list provided expected (range))]
               (check-argument-type f provided expected (conj indexes sub-index))))
+
         (keyword? expected) ;; a keyword has to match the argument's kind
         (when-not (= (v/kind provided) expected)
           (u/illegal (str "expected argument of type " expected " but got " (v/kind provided)
                           " in call to function " f)))
 
-        :else (u/illegal (str "unexpected argument example. got " provided " want " expected))))
+        :else (u/illegal
+               (str "unexpected argument example. got " provided " want " expected))))
 
 (defn- literal-apply [f xs]
   (check-argument-type f xs (domain-types f) [0])

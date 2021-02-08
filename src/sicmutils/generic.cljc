@@ -360,6 +360,7 @@ See [[*]] for a variadic version of [[mul]]."
 ;; More advanced generic operations.
 (defgeneric Lie-derivative 1)
 
+(def derivative-symbol 'D)
 (defmulti partial-derivative v/argument-kind)
 (defmethod partial-derivative [Keyword] [k]
   (k {:arity [:exactly 2]
